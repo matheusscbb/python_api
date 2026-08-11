@@ -2,6 +2,7 @@ import json
 import os
 import re
 import pandas as pd
+import requests
 import streamlit as st
 
 # Configuração da página
@@ -11,25 +12,26 @@ st.set_page_config(
     layout="wide"
 )
 
-NOME_ARQUIVO_JSON = 'mensagens_vip_dudao.json'
+# URL da API Flask criada no PythonAnywhere
+URL_API = "https://mtscooby.pythonanywhere.com/obter-json?key=minha_chave_super_secreta_123"
 
 @st.cache_data(ttl=10)  # Atualiza os dados a cada 10 segundos
 def carregar_dados():
-    if not os.path.exists(NOME_ARQUIVO_JSON):
-        return pd.DataFrame()
-    
-    with open(NOME_ARQUIVO_JSON, 'r', encoding='utf-8') as f:
-        try:
-            dados = json.load(f)
-        except json.JSONDecodeError:
+    try:
+        response = requests.get(URL_API, timeout=5)
+        if response.status_code == 200:
+            dados = response.json()
+        else:
             return pd.DataFrame()
+    except Exception:
+        return pd.DataFrame()
             
     if not dados:
         return pd.DataFrame()
         
     df = pd.DataFrame(dados)
     
-    # Tratamento basico dos dados das mensagens
+    # Tratamento básico dos dados das mensagens
     df['data_hora'] = pd.to_datetime(df['data_hora'])
     
     # Extração simples de unidades/stake via RegEx (ex: "0.25 unidade" ou "1 unidade")
@@ -40,7 +42,7 @@ def carregar_dados():
         if match:
             val = match.group(1).replace(',', '.')
             return float(val)
-        return 1.0  # Padrão 1 unidade se não encontrar
+        return 1.0
 
     df['unidades'] = df['texto'].apply(extrair_unidade)
     
@@ -65,12 +67,11 @@ st.markdown("Acompanhamento automatizado de entradas e desempenho extraídos do 
 df = carregar_dados()
 
 if df.empty:
-    st.warning("Nenhuma mensagem ou aposta encontrada no arquivo JSON ainda. Aguarde novas entradas!")
+    st.warning("Nenhuma mensagem ou aposta encontrada ainda. Verifique se o script no PythonAnywhere está salvando dados!")
 else:
     # --- BARRA LATERAL (FILTROS) ---
     st.sidebar.header("Filtros")
     
-    # Filtro por Resultado
     resultados_sel = st.sidebar.multiselect(
         "Status da Aposta",
         options=["Green", "Red", "Pendente"],
@@ -113,7 +114,6 @@ else:
     # --- TABELA DE DADOS DETALHADA ---
     st.subheader("📋 Registro Detalhado das Mensagens")
     
-    # Seleção de colunas para exibição na tabela
     colunas_exibir = ['data_hora', 'resultado', 'unidades', 'texto']
     st.dataframe(
         df_filtrado[colunas_exibir].sort_values(by='data_hora', ascending=False),
